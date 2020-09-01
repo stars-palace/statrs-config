@@ -26,8 +26,8 @@ func UnmarshallerKeyAndValue(p []byte, v interface{}) error {
 }
 
 //读取key=value类型的配置文件(properties)
-func ReadConfigKeyValue(file *os.File) (map[string]string, error) {
-	config := make(map[string]string)
+func ReadConfigKeyValue(file *os.File) (map[string]interface{}, error) {
+	config := make(map[string]interface{})
 	r := bufio.NewReader(file)
 	for {
 		b, _, err := r.ReadLine()
@@ -60,7 +60,12 @@ func ReadConfigKeyValue(file *os.File) (map[string]string, error) {
 		if len(value) == 0 {
 			continue
 		}
-		config[key] = value
+		//加入了数组的解析
+		if i := strings.Index(s, ","); i != -1 {
+			config[key] = strings.Split(value, ",")
+		} else {
+			config[key] = value
+		}
 	}
 	return config, nil
 }
