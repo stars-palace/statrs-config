@@ -5,10 +5,11 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 	"github.com/stars-palace/statrs-common/pkg/xcast"
-	"github.com/stars-palace/statrs-common/pkg/xcodec"
+	"github.com/stars-palace/statrs-common/pkg/xfile"
 	"github.com/stars-palace/statrs-common/pkg/xmap"
 	"io"
 	"io/ioutil"
+	"os"
 	"reflect"
 	"strings"
 	"sync"
@@ -27,13 +28,16 @@ import (
 // Configuration provides configuration for application.
 var configType = "properties"
 
+// 解析器，给结构体赋值
+var unmarshallerToStruct UnmarshallerToStruct
+
 //配置整个系统的应用
 type Configuration struct {
-	mu       sync.RWMutex
+	Mu       sync.RWMutex
 	override map[string]interface{}
 	keyDelim string
 
-	keyMap    *sync.Map
+	KeyMap    *sync.Map
 	onChanges []func(*Configuration)
 
 	watchers map[string][]func(*Configuration)
@@ -59,92 +63,18 @@ func UnmarshalKey(key string, rawVal interface{}, opts ...GetOption) error {
 //解析配置
 func Unmarshal(rawVal interface{}) error {
 	//配置默认设置
-	return defaultConfiguration.Unmarshal(rawVal)
+	return nil //defaultConfiguration.Unmarshal(rawVal)
 }
 
-// UnmarshalKey takes a single key and unmarshal it into a Struct.
-func (c *Configuration) Unmarshal(rawVal interface{}) error {
-	//返回对应的类型
-	dataType := reflect.TypeOf(rawVal)
-	//返回对应类型的reflect.value
-	dataValue := reflect.ValueOf(rawVal)
-	//判断是否是指针，只有指针才能进行操作
-	if dataValue.Kind() == reflect.Ptr {
-		//是否时空的
-		if dataValue.IsNil() {
-			return errors.New("读取配置文件传入的必须是指针")
-		}
-		// 解引用
-		dataValue = dataValue.Elem()
-		dataType = dataType.Elem()
-	}
-	//获取结构体属性的个数
-	fieldNum := dataValue.NumField()
-	//从config中获取属性的tag
-	tagName := configType
-	//通过遍历给结构体的属性赋值
-	for i := 0; i < fieldNum; i++ {
-		field := dataType.Field(i)
-		//获取结构体的tag
-		tag := field.Tag.Get(tagName)
-		//根据名称获取值信息
-		fieldValue := dataValue.Field(i)
-		if tag == "" {
-			c.mu.RLock()
-		}
-		//获取配置的值
-		value := c.Get(tag)
-		if value == nil {
-			continue
-		}
-		//判断值是否有效。 当值本身非法时，返回 false，例如 reflect Value不包含任何值，值为 nil 等。
-		if !fieldValue.IsValid() {
-			continue
-		}
-		if fieldValue.CanInterface() {
-			//判断值是否可以被改变
-			if fieldValue.CanSet() {
-				// TODO 当前只对基本类型处理缺少对结构体中数组和结构体的处理
-				switch field.Type.Kind() {
-				case reflect.Struct:
-					val, err1 := xcodec.UnmarshalStruct(value, field.Type)
-					if err1 != nil {
-						return err1
-					}
-					//赋值
-					fieldValue.Set(val)
-					break
-				case reflect.Slice:
-					val, err1 := xcodec.UnmarshalArray(value, field.Type)
-					if err1 != nil {
-						return err1
-					}
-					//赋值
-					fieldValue.Set(val)
-					break
-				case reflect.Map:
-					val, err1 := xcodec.UnmarshalMap(value, dataType.Elem())
-					if err1 != nil {
-						return err1
-					}
-					//赋值
-					fieldValue.Set(val)
-					break
-				default:
-					//基本本数据类型转换
-					val, err1 := xcodec.BasicUnmarshalByType1(value, field.Type)
-					if err1 != nil {
-						return err1
-					}
-					//赋值
-					fieldValue.Set(reflect.ValueOf(val))
-					break
-				}
-			}
+// UnmarshalToStruct 解析配置到结构体
+func UnmarshalToStruct(rawVal interface{}) error {
+	//配置默认设置
+	return defaultConfiguration.localUnmarshalToStruct(rawVal)
+}
 
-		}
-	}
-	return nil
+//解析配置
+func (c *Configuration) localUnmarshalToStruct(rawVal interface{}) error {
+	return unmarshallerToStruct(c, rawVal)
 }
 
 const (
@@ -159,7 +89,7 @@ func New() *Configuration {
 	return &Configuration{
 		override:  make(map[string]interface{}),
 		keyDelim:  defaultKeyDelim,
-		keyMap:    &sync.Map{},
+		KeyMap:    &sync.Map{},
 		onChanges: make([]func(*Configuration), 0),
 		watchers:  make(map[string][]func(*Configuration)),
 	}
@@ -208,6 +138,17 @@ func (c *Configuration) LoadFromReader(reader io.Reader, unmarshaller Unmarshall
 	return c.Load(content, unmarshaller)
 }
 
+// Load loads configuration from config file.
+func (c *Configuration) LoadFromFile(file *os.File, readConfig ReadConfigFile, unmarshaller UnmarshallerToStruct) error {
+	configuration, err := readConfig(file)
+	if err != nil {
+		return err
+	}
+	unmarshallerToStruct = unmarshaller
+	configType = xfile.GetFileSuffix(file)
+	return c.apply(configuration)
+}
+
 // Set ...
 func (c *Configuration) Set(key string, val interface{}) error {
 	paths := strings.Split(key, c.keyDelim)
@@ -215,23 +156,23 @@ func (c *Configuration) Set(key string, val interface{}) error {
 	m := deepSearch(c.override, paths[:len(paths)-1])
 	m[lastKey] = val
 	return c.apply(m)
-	// c.keyMap.Store(key, val)
+	// c.KeyMap.Store(key, val)
 }
 
 //应用配置
 func (c *Configuration) apply(conf map[string]interface{}) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.Mu.Lock()
+	defer c.Mu.Unlock()
 
 	var changes = make(map[string]interface{})
 
 	xmap.MergeStringMap(c.override, conf)
 	for k, v := range c.traverse(c.keyDelim) {
-		orig, ok := c.keyMap.Load(k)
+		orig, ok := c.KeyMap.Load(k)
 		if ok && !reflect.DeepEqual(orig, v) {
 			changes[k] = v
 		}
-		c.keyMap.Store(k, v)
+		c.KeyMap.Store(k, v)
 	}
 
 	if len(changes) > 0 {
@@ -258,8 +199,8 @@ func (c *Configuration) UnmarshalKey(key string, rawVal interface{}, opts ...Get
 		return err
 	}
 	if key == "" {
-		c.mu.RLock()
-		defer c.mu.RUnlock()
+		c.Mu.RLock()
+		defer c.Mu.RUnlock()
 		return decoder.Decode(c.override)
 	}
 
@@ -320,17 +261,17 @@ func (c *Configuration) Get(key string) interface{} {
 //查找
 func (c *Configuration) find(key string) interface{} {
 	//直接读取
-	dd, ok := c.keyMap.Load(key)
+	dd, ok := c.KeyMap.Load(key)
 	if ok {
 		return dd
 	}
 
 	paths := strings.Split(key, c.keyDelim)
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.Mu.RLock()
+	defer c.Mu.RUnlock()
 	m := xmap.DeepSearchInMap(c.override, paths[:len(paths)-1]...)
 	dd = m[paths[len(paths)-1]]
-	c.keyMap.Store(key, dd)
+	c.KeyMap.Store(key, dd)
 	return dd
 }
 
@@ -353,4 +294,14 @@ func lookup(prefix string, target map[string]interface{}, data map[string]interf
 			data[pp] = v
 		}
 	}
+}
+
+func ChickHavePoint(s string) bool {
+	if len(s) > 0 {
+		i := strings.Index(s, ".")
+		if i >= 0 {
+			return true
+		}
+	}
+	return false
 }

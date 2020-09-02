@@ -14,6 +14,7 @@ package conf
 
 import (
 	"io"
+	"os"
 )
 
 /**
@@ -39,6 +40,12 @@ var defaultConfiguration = New()
 // Unmarshaller ...
 type Unmarshaller = func([]byte, interface{}) error
 
+// UnmarshallerToStruct  ... 读取配置文件到结构体中
+type UnmarshallerToStruct = func(*Configuration, interface{}) error
+
+// 读取配置值文件
+type ReadConfigFile = func(file *os.File) (map[string]interface{}, error)
+
 // 从数据原中读取配置
 // LoadFromDataSource load configuration from data source
 // if data source supports dynamic config, a monitor goroutinue
@@ -50,6 +57,11 @@ func LoadFromDataSource(ds DataSource, unmarshaller Unmarshaller) error {
 // Load loads configuration from provided provider with default defaultConfiguration.
 func LoadFromReader(r io.Reader, unmarshaller Unmarshaller) error {
 	return defaultConfiguration.LoadFromReader(r, unmarshaller)
+}
+
+// LoadFromFile 从文件中读取配置文件
+func LoadFromFile(file *os.File, readConfig ReadConfigFile, unmarshaller UnmarshallerToStruct) error {
+	return defaultConfiguration.LoadFromFile(file, readConfig, unmarshaller)
 }
 
 // Apply ...

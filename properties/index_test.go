@@ -1,4 +1,4 @@
-package perperties
+package properties
 
 import (
 	"fmt"

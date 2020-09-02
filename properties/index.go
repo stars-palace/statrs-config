@@ -1,36 +1,71 @@
-package yml
+package properties
 
 import (
+	"bufio"
+	"errors"
 	"fmt"
-	"github.com/pkg/errors"
 	"github.com/stars-palace/statrs-common/pkg/xcodec"
 	conf "github.com/stars-palace/statrs-config"
-	"gopkg.in/yaml.v2"
-	"io/ioutil"
+	"io"
 	"os"
 	"reflect"
 	"strings"
 )
 
 /**
+ *
  * Copyright (C) @2020 hugo network Co. Ltd
- * 解析yml文件依赖yml2
- * @author: hugo
- * @version: 1.0
- * @date: 2020/9/1
- * @time: 23:19
- * @description:
- */
-const tagName = "yml"
+ * @description
+ * @updateRemark
+ * @author               hugo
+ * @updateUser
+ * @createDate           2020/8/19 5:28 下午
+ * @updateDate           2020/8/19 5:28 下午
+ * @version              1.0
+**/
+const tagName = "properties"
 
+//读取key=value类型的配置文件(properties)
 func ReadFileConfig(file *os.File) (map[string]interface{}, error) {
 	config := make(map[string]interface{})
-	fd, err := ioutil.ReadAll(file)
-	if nil != err {
-		return nil, err
-	}
-	if err := yaml.Unmarshal(fd, &config); err != nil {
-		return nil, err
+	r := bufio.NewReader(file)
+	for {
+		b, _, err := r.ReadLine()
+		if err != nil {
+			if err == io.EOF {
+				break
+			} else {
+				return nil, err
+			}
+		}
+		s := strings.TrimSpace(string(b))
+		//判断是否以#开头的如果是则忽略掉
+		if strings.HasPrefix(s, "#") {
+			continue
+		}
+		index := strings.Index(s, "=")
+		if index < 0 {
+			continue
+		}
+		//判断是否包含行后面的注解
+		i := strings.Index(s, "#")
+		if i != -1 {
+			s = s[:i]
+		}
+		key := strings.TrimSpace(s[:index])
+		if len(key) == 0 {
+			continue
+		}
+		value := strings.TrimSpace(s[index+1:])
+		if len(value) == 0 {
+			continue
+		}
+		//加入了数组的解析
+		if i := strings.Index(s, ","); i != -1 {
+			config[key] = strings.Split(value, ",")
+		} else {
+			config[key] = value
+		}
 	}
 	return config, nil
 }
@@ -68,7 +103,7 @@ func Unmarshal(c *conf.Configuration, rawVal interface{}) error {
 				c.Mu.RLock()
 			}
 			//获取配置的值
-			value := getValue(c, tag)
+			value := c.Get(tag)
 			if value == nil {
 				continue
 			}
@@ -131,22 +166,4 @@ func Unmarshal(c *conf.Configuration, rawVal interface{}) error {
 		return errors.New(fmt.Sprintf("can not Unmarshal config to %s", dataType.String()))
 	}
 	return nil
-}
-
-func getValue(c *conf.Configuration, tag string) interface{} {
-	//获取第一个点出现的位置
-	i := strings.Index(tag, ".")
-	if i >= 0 {
-		key := string([]byte(tag)[:i])
-		vale := c.Get(key)
-		if vale != nil {
-			//获取去掉取出来的key
-			s := string([]byte(tag)[i+1:])
-			return getValue(c, s)
-		} else {
-			return vale
-		}
-	} else {
-		return c.Get(tag)
-	}
 }
