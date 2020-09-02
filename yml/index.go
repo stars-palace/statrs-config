@@ -1,14 +1,14 @@
 package yml
 
 import (
-	"fmt"
+	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
 )
 
 /**
  * Copyright (C) @2020 hugo network Co. Ltd
- * 一直是map
+ * 解析yml文件依赖yml2
  * @author: hugo
  * @version: 1.0
  * @date: 2020/9/1
@@ -16,17 +16,14 @@ import (
  * @description:
  */
 
-func Read() {
-	f, err := os.Open("../resources/application.yml")
-	if err != nil {
-		fmt.Println("read file fail", err)
+func ReadFileConfig(file *os.File) (map[string]interface{}, error) {
+	config := make(map[string]interface{})
+	fd, err := ioutil.ReadAll(file)
+	if nil != err {
+		return nil, err
 	}
-	defer f.Close()
-
-	fd, err := ioutil.ReadAll(f)
-	if err != nil {
-		fmt.Println("read to fd fail", err)
+	if err := yaml.Unmarshal(fd, &config); err != nil {
+		return nil, err
 	}
-
-	fmt.Println(string(fd))
+	return config, nil
 }
