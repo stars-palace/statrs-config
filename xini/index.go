@@ -134,6 +134,7 @@ func Unmarshal(c *conf.Configuration, rawVal interface{}) error {
 	return nil
 }
 
+// 解析值
 func getValue(c *conf.Configuration, tag string) interface{} {
 	//获取第一个点出现的位置
 	i := strings.Index(tag, ".")
@@ -143,12 +144,34 @@ func getValue(c *conf.Configuration, tag string) interface{} {
 		if vale != nil {
 			//获取去掉取出来的key
 			s := string([]byte(tag)[i+1:])
-			return getValue(c, s)
+			return getValueByMap(vale.(map[string]interface{}), s)
 		} else {
 			return vale
 		}
 	} else {
 		return c.Get(tag)
+	}
+}
+
+func getValueByMap(data map[string]interface{}, s string) interface{} {
+	//获取第一个点出现的位置
+	i := strings.Index(s, ".")
+	if i >= 0 {
+		key := string([]byte(s)[:i])
+		vale := data[key]
+		if vale != nil {
+			//获取去掉取出来的key
+			s := string([]byte(s)[i+1:])
+			tp := reflect.TypeOf(vale)
+			if tp.Kind() == reflect.Map {
+				return getValueByMap(vale.(map[string]interface{}), s)
+			}
+			return nil
+		} else {
+			return vale
+		}
+	} else {
+		return data[s]
 	}
 }
 
@@ -162,7 +185,7 @@ func parsingSection(sections []*ini.Section) (map[string]interface{}, error) {
 		child := make(map[string]interface{})
 		keys := section.Keys()
 		for _, v := range keys {
-			child[v.String()] = v.Value()
+			child[v.Name()] = v.Value()
 		}
 		config[section.Name()] = child
 	}

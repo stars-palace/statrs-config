@@ -1,4 +1,4 @@
-package yml
+package xyml
 
 import (
 	"fmt"
@@ -142,11 +142,33 @@ func getValue(c *conf.Configuration, tag string) interface{} {
 		if vale != nil {
 			//获取去掉取出来的key
 			s := string([]byte(tag)[i+1:])
-			return getValue(c, s)
+			return getValueByMap(vale.(map[interface{}]interface{}), s)
 		} else {
 			return vale
 		}
 	} else {
 		return c.Get(tag)
+	}
+}
+
+func getValueByMap(data map[interface{}]interface{}, s string) interface{} {
+	//获取第一个点出现的位置
+	i := strings.Index(s, ".")
+	if i >= 0 {
+		key := string([]byte(s)[:i])
+		vale := data[key]
+		if vale != nil {
+			//获取去掉取出来的key
+			s := string([]byte(s)[i+1:])
+			tp := reflect.TypeOf(vale)
+			if tp.Kind() == reflect.Map {
+				return getValueByMap(vale.(map[interface{}]interface{}), s)
+			}
+			return nil
+		} else {
+			return vale
+		}
+	} else {
+		return data[s]
 	}
 }

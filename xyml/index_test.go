@@ -1,4 +1,4 @@
-package yml
+package xyml
 
 import (
 	"fmt"

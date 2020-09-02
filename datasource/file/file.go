@@ -98,7 +98,7 @@ func (fp *fileDataSource) ReadConfig() ([]byte, error) {
 		err = conf.LoadFromFile(f, properties.ReadFileConfig, properties.Unmarshal)
 		break
 	case Yml:
-		err = conf.LoadFromFile(f, yml.ReadFileConfig, yml.Unmarshal)
+		err = conf.LoadFromFile(f, xyml.ReadFileConfig, xyml.Unmarshal)
 	case InI:
 		err = conf.LoadFromFile(f, xini.ReadFileConfig, xini.Unmarshal)
 	default:
