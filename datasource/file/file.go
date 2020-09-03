@@ -11,7 +11,7 @@ import (
 	conf "github.com/stars-palace/statrs-config"
 	"github.com/stars-palace/statrs-config/properties"
 	"github.com/stars-palace/statrs-config/xini"
-	"github.com/stars-palace/statrs-config/yml"
+	"github.com/stars-palace/statrs-config/xyml"
 	"log"
 	"os"
 	"path/filepath"
